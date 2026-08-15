@@ -1,0 +1,24 @@
+variable "environment" {
+  type        = string
+}
+
+variable "vpc_cidr" {
+  type        = string
+}
+
+variable "azs" {
+  type        = list(string)
+}
+
+variable "private_subnet_cidrs" {
+  type        = list(string)
+}
+
+variable "private_database_subnet_cidrs" {
+  type        = list(string)
+}
+
+variable "public_subnet_cidrs" {
+  type        = list(string)
+  description = "Public subnet for NAT gateway"
+}
