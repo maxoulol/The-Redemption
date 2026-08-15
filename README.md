@@ -65,6 +65,12 @@ One Nat gateway for test purposes
 ### Deploy VPC endpoint for private connection to AWS services
 https://github.com/terraform-aws-modules/terraform-aws-vpc/blob/master/examples/complete/main.tf
 
+## EKS cluster and Karpenter install
+
+https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/20.37.2?utm_content=documentLink&utm_medium=Visual+Studio+Code&utm_source=terraform-ls
+
+https://github.com/aws-samples/karpenter-blueprints/blob/main/cluster/terraform/main.tf
+`alias kl="kubectl -n karpenter logs -l app.kubernetes.io/name=karpenter --all-containers=true -f --tail=20"` Alias to check karpenter logs
 
 
 
