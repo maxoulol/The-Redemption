@@ -48,9 +48,26 @@ aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-c
 aws s3api put-bucket-versioning --bucket $BUCKET_NAME --versioning-configuration Status=Enabled 
 aws s3api put-public-access-block --bucket $BUCKET_NAME --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" 
 aws dynamodb create-table --table-name terraform-state-lock --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --billing-mode PAY_PER_REQUEST --region $REGION
-
+#TODO CHECK BUCKET LOCK with dynamo --> deprecated
 ```
+# Code process
+## Networking
+### Deploy VPC
+https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest
+
+#### architecture 
+1 VPC, 3 AZ, 3 subnet
+
+public subnet for NAT
+Private subnet for resources
+Private subnet for Database
+One Nat gateway for test purposes
+### Deploy VPC endpoint for private connection to AWS services
+https://github.com/terraform-aws-modules/terraform-aws-vpc/blob/master/examples/complete/main.tf
+
+
 
 
 # Sources:
 https://karpenter.sh/docs/getting-started/getting-started-with-karpenter/
+https://github.com/terraform-aws-modules/terraform-aws-vpc/blob/master/modules/vpc-endpoints/main.tf
