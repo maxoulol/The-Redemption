@@ -26,10 +26,6 @@ module "karpenter" {
   depends_on = [ module.vpc ]
 }
 
-################################################################################
-# Helm charts
-################################################################################
-
 resource "helm_release" "karpenter" {
   name                = "karpenter"
   namespace           = local.karpenter_namespace
@@ -116,7 +112,7 @@ resource "kubectl_manifest" "karpenter_default_node_pool" {
               values: ["amd64", "arm64"]
             - key: "karpenter.k8s.aws/instance-cpu"
               operator: In
-              values: ["4"] #"8", "16", "32", "48", "64"]
+              values: ["2","4"] 
             - key: karpenter.sh/capacity-type
               operator: In
               values: ["spot", "on-demand"]
