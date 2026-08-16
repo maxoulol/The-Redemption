@@ -2,10 +2,6 @@ locals {
   karpenter_namespace = "karpenter"
 }
 
-################################################################################
-# Controller & Node IAM roles, SQS Queue, Eventbridge Rules
-################################################################################
-
 module "karpenter" {
   source  = "terraform-aws-modules/eks/aws//modules/karpenter"
   version = "21.19.1"

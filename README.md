@@ -144,6 +144,16 @@ INSERT INTO loyalty_accounts (first_name, last_name, email, points_balance, tier
 
 SELECT * FROM loyalty_accounts;
 ```
+
+## SQS 
+SQS will help us queue messages as clients connect to the application to use their loyalty points so we can make a deduction of the points on the database.
+
+It also protects us from app malfunction with the implementation of a retry process as well as a deadletter queue.
+
+## KEDA.. TODO
+KEDA will help us to scale the numbers of pod according to the number of messages in the queue allowing the Redemption app to scale on a given metric (number of messages in SQS) during load spikes
+
+
 # List of improvement for prod ready Workload
 - Database : enable deletion protection
 

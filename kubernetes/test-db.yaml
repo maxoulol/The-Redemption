@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aurora-admin-client
+  namespace: deduction
+  labels:
+    role: db-admin
+spec:
+  serviceAccountName: redemption-sa
+  containers:
+  - name: admin-tools
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+    env:
+      - name: PGHOST
+        value: "redemption-db.cluster-cdo24w8gi7zq.eu-west-1.rds.amazonaws.com"
+      - name: PGPORT
+        value: "5432"
+      - name: PGDATABASE
+        value: "postgres"
+      - name: SECRET_ID
+        value: "arn:aws:secretsmanager:eu-west-1:658980433478:secret:rds!cluster-08fe5213-b638-4847-9491-bc3a01804111-x7F5nJ"
+  restartPolicy: Never

@@ -27,3 +27,10 @@ output "availability_zones" {
   description = "Availability zones used by the cluster"
   value       = local.azs
 }
+
+output "sqs_queue_url" {
+  value = aws_sqs_queue.redemption_queue.id
+}
+output "sqs_queue_arn" {
+  value = aws_sqs_queue.redemption_queue.arn
+}
