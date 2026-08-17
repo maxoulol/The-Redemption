@@ -31,6 +31,15 @@ output "availability_zones" {
 output "sqs_queue_url" {
   value = aws_sqs_queue.redemption_queue.id
 }
+
 output "sqs_queue_arn" {
   value = aws_sqs_queue.redemption_queue.arn
+}
+
+output "aurora_endpoint" {
+  value = module.aurora.cluster_endpoint
+}
+
+output "elacticache_endpoint" {
+  value = aws_elasticache_replication_group.redis.primary_endpoint_address
 }

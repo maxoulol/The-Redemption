@@ -70,6 +70,9 @@ module "eks" {
   enable_cluster_creator_admin_permissions = true
 
   addons = {
+    amazon-cloudwatch-observability = {
+      most_recent = true
+    }
     coredns = {
       most_recent = true
     }
@@ -112,15 +115,18 @@ module "eks" {
       instance_types = ["t3.micro", "t3.small"]#"m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
 
       subnet_ids   = module.vpc.private_subnets
-      max_size     = 2
-      desired_size = 2
-      min_size     = 2
+      max_size     = 3
+      desired_size = 3
+      min_size     = 3
 
       metadata_options = {
         http_endpoint               = "enabled"
         http_tokens                 = "required"
         http_put_response_hop_limit = 2
       }
+      iam_role_additional_policies = {
+      CloudWatchAgentServerPolicy = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+    }
 
       labels = {
         # Used to ensure Karpenter runs on nodes that it does not manage

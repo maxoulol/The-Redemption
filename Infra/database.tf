@@ -36,6 +36,7 @@ module "aurora" {
   vpc_id                 = module.vpc.vpc_id
   db_subnet_group_name   = module.vpc.database_subnet_group_name
   vpc_security_group_ids = [aws_security_group.aurora.id]
+  skip_final_snapshot = true
 
   cluster_instance_class = "db.t3.medium"
     instances = {
