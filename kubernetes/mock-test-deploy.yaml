@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redemption-api
+  namespace: deduction
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redemption-api
+  template:
+    metadata:
+      labels:
+        app: redemption-api
+    spec:
+      serviceAccountName: redemption-sa
+      containers:
+      - name: api
+        image: python:3.10-slim
+        workingDir: /scripts
+        command: ["/bin/sh", "-c"]
+        args:
+          - "pip install fastapi uvicorn boto3 && uvicorn api:app --host 0.0.0.0 --port 8000"
+        env:
+          - name: QUEUE_URL
+            value: "${QUEUE_URL}"
+          - name: AWS_DEFAULT_REGION
+            value: "eu-west-1"
+        ports:
+          - containerPort: 8000
+        volumeMounts:
+          - name: scripts-volume
+            mountPath: /scripts
+      volumes:
+        - name: scripts-volume
+          configMap:
+            name: redemption-scripts
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redemption-worker
+  namespace: deduction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redemption-worker
+  template:
+    metadata:
+      labels:
+        app: redemption-worker
+    spec:
+      serviceAccountName: redemption-sa
+      containers:
+      - name: worker
+        image: alpine/psql:18.4
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Install dependencies"
+            apk add --no-cache aws-cli jq bash
+            echo "Dependcies installed.. start worker script"
+            /bin/bash /scripts/worker.sh
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "156Mi"
+        env:
+          - name: QUEUE_URL
+            value: "${QUEUE_URL}"
+          - name: SECRET_ID
+            value: "${SECRET_ID}"
+          - name: PGHOST
+            value: "${PGHOST}"
+          - name: AWS_DEFAULT_REGION
+            value: "eu-west-1"
+        volumeMounts:
+          - name: scripts-volume
+            mountPath: /scripts
+      volumes:
+        - name: scripts-volume
+          configMap:
+            name: redemption-scripts
+            defaultMode: 0777

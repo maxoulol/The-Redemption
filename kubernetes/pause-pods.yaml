@@ -1,0 +1,30 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: low-priority-overprovisioning
+value: -1
+globalDefault: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pause-pod
+  namespace: deduction
+spec:
+  replicas: 25 
+  selector:
+    matchLabels:
+      app: pause-pod
+  template:
+    metadata:
+      labels:
+        app: pause-pod
+    spec:
+      priorityClassName: low-priority-overprovisioning
+      containers:
+      - name: reserve-resources
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "128Mi"

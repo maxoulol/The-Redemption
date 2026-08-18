@@ -64,7 +64,6 @@ https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest
 - One Nat gateway for test purposes
 - EKS cluster with karpenter submodule installed to manage node provisionning
 - Aurora DB with autoscaling read replicas + elasticache to handle the load spikes 
-- 
 
 ### Deploy VPC endpoint for private connection to AWS services
 https://github.com/terraform-aws-modules/terraform-aws-vpc/blob/master/examples/complete/main.tf
@@ -161,8 +160,74 @@ KEDA will help us to scale the numbers of pod according to the number of message
 ```bash
 terraform apply --target module.vpc --auto-approve
 terraform apply --auto-approve
+
+#retrieve the eks kubectl config in the tf output
+kubectl apply -f ../kubernetes/pod-sa.yaml
+kubectl apply -f ../kubernetes/test-db.yaml
+
+# KEDA installation
+helm repo add kedacore https://kedacore.github.io/charts  
+helm repo update
+helm install keda kedacore/keda --namespace keda --create-namespace
+kubectl get pods -n keda
+kubectl apply -f ../kubernetes/keda-crds.yaml
+kubectl apply -f ../kubernetes/keda-scaled-object.yaml
+kubectl apply -f ../kubernetes/pause-pods.yaml
+
+
+# K6 installation
+kubectl create configmap k6-test --from-file=../kubernetes/load-test.js -n deduction
+kubectl run k6-load-test -n deduction -i --rm --image=grafana/k6 \
+  --restart=Never \
+  --overrides='{"spec": {"volumes": [{"name": "test-script", "configMap": {"name": "k6-test"}}], "containers": [{"name": "k6", "image": "grafana/k6", "command": ["k6", "run", "/scripts/load-test.js"], "volumeMounts": [{"name": "test-script", "mountPath": "/scripts"}]}]}}'
+
+
+kubectl exec -it aurora-admin-client -n deduction -- /bin/bash
+
+in the pod
+```bash
+apk add --no-cache aws-cli postgresql17 bash && bash
+SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $SECRET_ID --query SecretString --output text)
+export PGUSER=$(echo $SECRET_JSON | jq -r .username)
+export PGPASSWORD=$(echo $SECRET_JSON | jq -r .password)
+psql
+```
+
+when in the postgres console:
+```bash
+CREATE TABLE loyalty_accounts (
+    account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    points_balance INT NOT NULL CHECK (points_balance >= 0),
+    tier VARCHAR(20) DEFAULT 'BRONZE',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO loyalty_accounts (first_name, last_name, email, points_balance, tier)
+SELECT 
+    'LoadTest',
+    'User_' || i,
+    'user' || i || '@example.com',
+    50000,
+    'LOAD_TEST'
+FROM generate_series(1, 100) AS i
+ON CONFLICT (email) DO NOTHING;
+
+SELECT * FROM loyalty_accounts;
+
+SELECT * FROM loyalty_accounts WHERE points_balance < 50000;
 ```
 
 # Sources:
+## Technologies
 https://karpenter.sh/docs/getting-started/getting-started-with-karpenter/
+
+https://keda.sh/docs/2.20/deploy/
+
+## Architecture
+https://docs.aws.amazon.com/solutions/event-driven-application-autoscaling-with-keda-on-amazon-eks/
+
+## Terraform Modules
 https://github.com/terraform-aws-modules/terraform-aws-vpc/blob/master/modules/vpc-endpoints/main.tf
