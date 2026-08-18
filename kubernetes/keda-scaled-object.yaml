@@ -1,0 +1,28 @@
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: redemption-scaler
+  namespace: deduction
+spec:
+  scaleTargetRef:
+    name: redemption-worker
+  minReplicaCount: 1
+  maxReplicaCount: 100
+  pollingInterval: 5
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+          - type: Percent
+            value: 200
+            periodSeconds: 15
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: "${QUEUE_URL}"
+        queueLength: "15"
+        awsRegion: "eu-west-1"
+        identityOwner: "operator"

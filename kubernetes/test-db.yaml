@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aurora-admin-client
+  namespace: deduction
+  labels:
+    role: db-admin
+spec:
+  serviceAccountName: redemption-sa
+  containers:
+  - name: admin-tools
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+    env:
+      - name: PGHOST
+        value: "${PGHOST}"
+      - name: PGPORT
+        value: "5432"
+      - name: PGDATABASE
+        value: "postgres"
+      - name: SECRET_ID
+        value: "${SECRET_ID}"
+  restartPolicy: Never
