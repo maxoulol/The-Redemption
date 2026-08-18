@@ -40,6 +40,10 @@ output "aurora_endpoint" {
   value = module.aurora.cluster_endpoint
 }
 
+output "aurora_secret_arn" {
+  value = module.aurora.cluster_master_user_secret[0].secret_arn
+}
+
 output "elacticache_endpoint" {
   value = aws_elasticache_replication_group.redis.primary_endpoint_address
 }

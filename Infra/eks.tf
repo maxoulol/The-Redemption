@@ -65,7 +65,7 @@ module "eks" {
   version = "~> 21.6"
 
   name                                     = local.name
-  kubernetes_version                       = "1.34"
+  kubernetes_version                       = "1.36"
   endpoint_public_access                   = true
   enable_cluster_creator_admin_permissions = true
 
@@ -112,7 +112,7 @@ module "eks" {
 
   eks_managed_node_groups = {
     mng = {
-      instance_types = ["t3.micro", "t3.small"]#"m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
+      instance_types = ["t3.small", "t3.medium"]#"m4.large", "m5.large", "m5a.large", "m5ad.large", "m5d.large", "t2.large", "t3.large", "t3a.large"]
 
       subnet_ids   = module.vpc.private_subnets
       max_size     = 3
