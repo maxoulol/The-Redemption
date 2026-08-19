@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: aurora-admin-client
+  name: aurora-admin-check
   namespace: deduction
   labels:
     role: db-admin
@@ -24,27 +24,7 @@ spec:
         export PGPASSWORD=$(echo $SECRET_JSON | jq -r .password)
 
         psql -U "$PGUSER" -h "$PGHOST" << 'EOF'
-        CREATE TABLE IF NOT EXISTS loyalty_accounts (
-            account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            first_name VARCHAR(50) NOT NULL,
-            last_name VARCHAR(50) NOT NULL,
-            email VARCHAR(100) UNIQUE NOT NULL,
-            points_balance INT NOT NULL CHECK (points_balance >= 0),
-            tier VARCHAR(20) DEFAULT 'BRONZE',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        INSERT INTO loyalty_accounts (first_name, last_name, email, points_balance, tier)
-        SELECT 
-            'LoadTest',
-            'User_' || i,
-            'user' || i || '@example.com',
-            50000,
-            'LOAD_TEST'
-        FROM generate_series(1, 100) AS i
-        ON CONFLICT (email) DO NOTHING;
-
-        SELECT * FROM loyalty_accounts;
+        SELECT * FROM loyalty_accounts WHERE points_balance < 50000;
         EOF
 
     env:

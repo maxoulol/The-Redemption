@@ -1,6 +1,88 @@
 # The-Redemption
 
-## Prerequisite
+- [The-Redemption](#the-redemption)
+- [Terraform usage](#terraform-usage)
+  * [Prerequisites](#prerequisites)
+    + [AWS CLI installation](#aws-cli-installation)
+    + [Terraform installation](#terraform-installation)
+    + [S3 bucket to hold terraform state](#s3-bucket-to-hold-terraform-state)
+- [Code process](#code-process)
+  * [Networking](#networking)
+    + [Deploy VPC](#deploy-vpc)
+      - [Architecture](#architecture)
+    + [Deploy VPC endpoint for private connection to AWS services](#deploy-vpc-endpoint-for-private-connection-to-aws-services)
+  * [EKS cluster and Karpenter install](#eks-cluster-and-karpenter-install)
+  * [Database and cache](#database-and-cache)
+    + [Testing Aurora DB connection from pods](#testing-aurora-db-connection-from-pods)
+  * [POD security with Pod Identity](#pod-security-with-pod-identity)
+  * [SQS](#sqs)
+  * [KEDA](#keda)
+    + [ScaledObject definition](#scaledobject-definition)
+  * [Pause pod](#pause-pod)
+  * [Mock application](#mock-application)
+  * [Load Testing in video](#load-testing-in-video)
+- [List of improvement for prod ready Workload](#list-of-improvement-for-prod-ready-workload)
+- [Sources:](#sources-)
+  * [Technologies](#technologies)
+  * [Architecture](#architecture-1)
+  * [Terraform Modules](#terraform-modules)
+  * [Security](#security)
+
+
+# Terraform usage
+```bash
+cd Infra
+terraform apply --target module.vpc --auto-approve
+terraform apply --auto-approve
+
+TF_OUTPUTS=$(terraform output -json)
+export QUEUE_URL=$(echo $TF_OUTPUTS | jq -r '.sqs_queue_url.value')
+export PGHOST=$(echo $TF_OUTPUTS | jq -r '.aurora_endpoint.value')
+export SECRET_ID=$(echo $TF_OUTPUTS | jq -r '.aurora_secret_arn.value')
+export KUBE_CONFIG=$(echo $TF_OUTPUTS | jq -r '.configure_kubectl.value')
+
+$KUBE_CONFIG
+
+
+envsubst < ../kubernetes/pod-sa.yaml| kubectl apply -f -
+envsubst '${PGHOST} ${SECRET_ID}' < ../kubernetes/test-db.yaml | kubectl apply -f -
+
+# KEDA installation
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm install keda kedacore/keda --namespace keda --create-namespace
+kubectl get pods -n keda
+
+kubectl apply -f ../kubernetes/mock-test-cm.yaml
+envsubst < ../kubernetes/mock-test-deploy.yaml | kubectl apply -f -
+envsubst < ../kubernetes/keda-crds.yaml | kubectl apply -f -
+envsubst < ../kubernetes/keda-scaled-object.yaml | kubectl apply -f -
+
+
+# K6 installation
+kubectl create configmap k6-test --from-file=../kubernetes/load-test.js -n deduction
+kubectl run k6-load-test -n deduction -i --rm --image=grafana/k6 \
+  --restart=Never \
+  --overrides='{"spec": {"volumes": [{"name": "test-script", "configMap": {"name": "k6-test"}}], "containers": [{"name": "k6", "image": "grafana/k6", "command": ["k6", "run", "/scripts/load-test.js"], "volumeMounts": [{"name": "test-script", "mountPath": "/scripts"}]}]}}'
+
+
+# check if Points have be substracted
+envsubst '${PGHOST} ${SECRET_ID}' < ../kubernetes/check-db.yaml | kubectl apply -f -
+kubectl logs aurora-admin-check -n deduction
+
+envsubst < ../kubernetes/mock-test-deploy.yaml | kubectl delete -f -
+envsubst < ../kubernetes/mock-test-cm.yaml | kubectl delete -f -
+envsubst < ../kubernetes/keda-scaled-object.yaml | kubectl delete -f -
+envsubst < ../kubernetes/keda-crds.yaml | kubectl delete -f -
+envsubst '${PGHOST} ${SECRET_ID}' < ../kubernetes/test-db.yaml | kubectl delete -f -
+envsubst < ../kubernetes/pod-sa.yaml| kubectl delete -f -
+
+helm uninstall keda -n keda
+
+terraform destroy
+```
+
+## Prerequisites
 
 ### AWS CLI installation
 [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
@@ -85,9 +167,8 @@ Aurora DB: [Aurora module link](https://registry.terraform.io/modules/terraform-
 Redis Cache: [Redis/elasticache resource link](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticache_replication_group)
 
 Added security group to allow EKS to Aurora and elasticache connection
-improvement : add DB deletion protection
+Improvement : add DB deletion protection
 ### Testing Aurora DB connection from pods
-
 
 `kubectl run netshoot-debug --rm -it --image nicolaka/netshoot -- /bin/bash`
 
@@ -100,125 +181,76 @@ nc -zv $RDSHOST 5432 # test postregres connection
 nc -zv $ELASTICACHE 6379 # test Redis connection
 ```
 
-## POD security with IRSA test
+## POD security with Pod Identity
 goal : allow pod to retrieve Aurora secret
+use aws_eks_pod_identity_association resource in associattion with a k8s sa to inherit IAM permissions
 
 kubectl apply -f kubernetes/pod-sa.yaml
 kubectl apply -f kubernetes/test-db.yaml
 kubectl exec -it aurora-admin-client -n deduction -- /bin/bash
 
 
-in the pod
-```bash
-apk add --no-cache aws-cli postgresql17 bash && bash
-SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $SECRET_ID --query SecretString --output text)
-export PGUSER=$(echo $SECRET_JSON | jq -r .username)
-export PGPASSWORD=$(echo $SECRET_JSON | jq -r .password)
-psql
-```
-
-when in the postgres console:
-```bash
-CREATE TABLE loyalty_accounts (
-    account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    points_balance INT NOT NULL CHECK (points_balance >= 0),
-    tier VARCHAR(20) DEFAULT 'BRONZE',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO loyalty_accounts (first_name, last_name, email, points_balance, tier) VALUES
-('Jean', 'Dupont', 'jean.dupont@example.com', 1500, 'BRONZE'),
-('Marie', 'Curie', 'm.curie@example.com', 8200, 'GOLD'),
-('Ada', 'Lovelace', 'ada.l@example.com', 450, 'BRONZE'),
-('Alan', 'Turing', 'alan.turing@example.com', 12000, 'PLATINUM'),
-('Grace', 'Hopper', 'grace.h@example.com', 3200, 'SILVER'),
-('Nikola', 'Tesla', 'nikola.t@example.com', 0, 'BRONZE'),
-('Margaret', 'Hamilton', 'margaret.h@example.com', 5600, 'GOLD'),
-('Tim', 'Berners-Lee', 'tim.bl@example.com', 800, 'BRONZE'),
-('Hedy', 'Lamarr', 'hedy.l@example.com', 4100, 'SILVER'),
-('Linus', 'Torvalds', 'linus.t@example.com', 9500, 'PLATINUM');
-
-SELECT * FROM loyalty_accounts;
-```
-
 ## SQS 
 SQS will help us queue messages as clients connect to the application to use their loyalty points so we can make a deduction of the points on the database.
 
 It also protects us from app malfunction with the implementation of a retry process as well as a deadletter queue.
 
-## KEDA.. TODO
+Number of SQS messages in the queue is our indicator to know if we need to scale the application using KEDA
+
+## KEDA
 KEDA will help us to scale the numbers of pod according to the number of messages in the queue allowing the Redemption app to scale on a given metric (number of messages in SQS) during load spikes
 
+### ScaledObject definition
 
-# List of improvement for prod ready Workload
-- Database : enable deletion protection
+The KEDA ScaledObject will scale our redemption-worker (the pod treating SQS messages)
+- number of replicas : 1-100
+- check : every 5s
+- allows us to scale 3 pods at a time (200% of the value) every 15s
 
-# Terraform usage
-```bash
-terraform apply --target module.vpc --auto-approve
-terraform apply --auto-approve
+## Pause pod
+We define Pause Pods with low priorityClass (-1) to reserve cpu and memory artificially. Those pods will be evicted and replaced by the redemption-worker when needed since they have a higher priority class. Those pods will also warm up the next node needed to scale in seconds.
 
-#retrieve the eks kubectl config in the tf output
-kubectl apply -f ../kubernetes/pod-sa.yaml
-kubectl apply -f ../kubernetes/test-db.yaml
+https://abozar-alizadeh.medium.com/the-kubernetes-overprovisioning-playbook-how-a-simple-pause-pod-can-eliminate-scaling-delays-in-0ec95688dbe3
 
-# KEDA installation
-helm repo add kedacore https://kedacore.github.io/charts  
-helm repo update
-helm install keda kedacore/keda --namespace keda --create-namespace
-kubectl get pods -n keda
-kubectl apply -f ../kubernetes/keda-crds.yaml
-kubectl apply -f ../kubernetes/keda-scaled-object.yaml
-kubectl apply -f ../kubernetes/pause-pods.yaml
+## Mock application
+
+In order to emulate the app processing the messages and writing in the database we mock application with 2 pods:
+- redemption-api: emulates a client clicking on a button in the interface thats sends a message in SQS
+- redemption-worker: emulates the backend that reads message and its content to allow loyalty point deduction from the user account in database
+
+## Load Testing in video
+you can find a load testing video here : https://www.youtube.com/watch?v=umzoblhi0hQ
+
+The test could react faster to infrastructure change by modifying the kubernetes/load-test.js file and fine tuning the kubernetes/keda-scaled-object.yaml also the pods used as a mock for the API and the backend weren't already packaged as docker images nor the code was optimized for such test which make it slower than a test in a real environment but the proof of concept in addition to the load test shows the infrastructure answers the business need of handling 10x clients spikes on the platform. Thanks to SQS, KEDA, Karpenter and the pause pods working all together to handle the load.
+
+# List of improvements for production ready workload
+- Database : enable deletion protection + transaction table with transaction id for processed messages
+- Create docker images instead of mock images which install the necessary packages at the startup of the pod
+- SQS DLQ management : test with non working messages to check how DLQ works around it 
+- Idempotency : randomly delete pods before they finish processing a message and check if transaction could be done and was processed only once
+- Security : review all IAM roles for least privilege, install Secret managerCSI driver, create k8s network policies
+- FinOps : fine tune the load testing, machine type and machine size, use spot instance
+- Operational Toil: install a gitops solution like ArgoCD to automate new deployments and automate resource creation
+- Observability : configure observability and alerting according to the defined SLIs and SLOs to stay informed of the system health
+- Loadbalancing : implement a public loadbalancer to receive real traffic from internet (to not expose the infrastructure and the application to internet I decided to not deploy an ELB for the assignment)
+- Implement mTLS : https://aws.amazon.com/fr/blogs/containers/enabling-mtls-with-alb-in-amazon-eks/
 
 
-# K6 installation
-kubectl create configmap k6-test --from-file=../kubernetes/load-test.js -n deduction
-kubectl run k6-load-test -n deduction -i --rm --image=grafana/k6 \
-  --restart=Never \
-  --overrides='{"spec": {"volumes": [{"name": "test-script", "configMap": {"name": "k6-test"}}], "containers": [{"name": "k6", "image": "grafana/k6", "command": ["k6", "run", "/scripts/load-test.js"], "volumeMounts": [{"name": "test-script", "mountPath": "/scripts"}]}]}}'
+# Feedback on The-Redemption
 
+As a GCP expert it was nice to discover AWS after after years without using it. It was also a great challenge to implement such an architecture because it was my first time implementing an Event-Driven Architecture especially on EKS. I think the subject represents well your business needs. That's what motivated me to build and test such an infrastructure which was quite fun to do. What I liked the most was to load test the infrastructure and see the Karpenter and KEDA I deployed working together and deploying nodes as I expected. Even if of course on the first try it didn't work as expected.
 
-kubectl exec -it aurora-admin-client -n deduction -- /bin/bash
+It was interesting to work around the issue of instantly scaling when there was unexpected load spikes. It was the perfect opportunity to get hands-on experience with Karpenter. That's also why I wanted to implement it myself instead of using the managed Karpenter available in EKS auto-mode. It was also interesting to discover new capabilities as I was working through the subject for example I started implementing IRSA but then discovered the option to use pod-identity instead as an AWS native solution.
 
-in the pod
-```bash
-apk add --no-cache aws-cli postgresql17 bash && bash
-SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $SECRET_ID --query SecretString --output text)
-export PGUSER=$(echo $SECRET_JSON | jq -r .username)
-export PGPASSWORD=$(echo $SECRET_JSON | jq -r .password)
-psql
-```
+I finish this assignment with new skills in my backpack and I'm proud that I managed to make all the tools I used to provision the infrastructure work together to answer the business need of autoscaling, availability and resiliency.
 
-when in the postgres console:
-```bash
-CREATE TABLE loyalty_accounts (
-    account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    points_balance INT NOT NULL CHECK (points_balance >= 0),
-    tier VARCHAR(20) DEFAULT 'BRONZE',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+Of course this is a POC for the assignment and many more subjects have to be tackled in order to deploy such an infrastructure in production. Some of my ideas for the 2nd version can be found in the section [List of improvement for production ready Workload](#list-of-improvement-for-production-ready-workload). I'd be glad to discuss the implementation with and receive your feedback as well.
 
-INSERT INTO loyalty_accounts (first_name, last_name, email, points_balance, tier)
-SELECT 
-    'LoadTest',
-    'User_' || i,
-    'user' || i || '@example.com',
-    50000,
-    'LOAD_TEST'
-FROM generate_series(1, 100) AS i
-ON CONFLICT (email) DO NOTHING;
+If that's the kind of challenges you are facing day to day in your team I think I would thrive in working with you.
+Thank you for the time you'll spend reviewing my work for this assignment.
 
-SELECT * FROM loyalty_accounts;
-
-SELECT * FROM loyalty_accounts WHERE points_balance < 50000;
-```
+Sincerely,
+Maxence CARLIN
 
 # Sources:
 ## Technologies
@@ -226,8 +258,26 @@ https://karpenter.sh/docs/getting-started/getting-started-with-karpenter/
 
 https://keda.sh/docs/2.20/deploy/
 
+github.com/aws-samples/karpenter-blueprints/blob/main/README.md
+
 ## Architecture
 https://docs.aws.amazon.com/solutions/event-driven-application-autoscaling-with-keda-on-amazon-eks/
 
+https://abozar-alizadeh.medium.com/the-kubernetes-overprovisioning-playbook-how-a-simple-pause-pod-can-eliminate-scaling-delays-in-0ec95688dbe3
+
+
 ## Terraform Modules
 https://github.com/terraform-aws-modules/terraform-aws-vpc/blob/master/modules/vpc-endpoints/main.tf
+
+https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest/submodules/karpenter
+
+https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest
+
+https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest
+
+
+## Security
+https://aws.amazon.com/fr/blogs/containers/enabling-mtls-with-alb-in-amazon-eks/
+
+## Other
+markdown table of content generator : https://ecotrust-canada.github.io/markdown-toc/

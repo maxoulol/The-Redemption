@@ -5,9 +5,9 @@ export const options = {
   scenarios: {
     flash_sale: {
       executor: 'constant-arrival-rate',
-      rate: 10,
+      rate: 2,
       timeUnit: '1s',
-      duration: '5m',
+      duration: '2m',
       preAllocatedVUs: 5,
       maxVUs: 50,
     },
