@@ -126,11 +126,12 @@ sudo apt-get install terraform
 BUCKET_NAME="tf-state-redemption"
 REGION="eu-west-1"
 
-aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-configuration LocationConstraint=$REGION 
-aws s3api put-bucket-versioning --bucket $BUCKET_NAME --versioning-configuration Status=Enabled 
-aws s3api put-public-access-block --bucket $BUCKET_NAME --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" 
-aws dynamodb create-table --table-name terraform-state-lock --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --billing-mode PAY_PER_REQUEST --region $REGION
-#TODO CHECK BUCKET LOCK with dynamo --> deprecated
+aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-configuration LocationConstraint=$REGION
+aws s3api put-bucket-versioning --bucket $BUCKET_NAME --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket $BUCKET_NAME --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+aws s3api put-bucket-encryption --bucket $BUCKET_NAME --region $REGION --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+#Not usefull anymore use use_lock in bakend.tf instead
+#aws dynamodb create-table --table-name terraform-state-lock --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --billing-mode PAY_PER_REQUEST --region $REGION
 ```
 # Code process
 ## Networking
@@ -238,16 +239,16 @@ The test could react faster to infrastructure change by modifying the kubernetes
 
 # Feedback on The-Redemption
 
-As a GCP expert it was nice to discover AWS after after years without using it. It was also a great challenge to implement such an architecture because it was my first time implementing an Event-Driven Architecture especially on EKS. I think the subject represents well your business needs. That's what motivated me to build and test such an infrastructure which was quite fun to do. What I liked the most was to load test the infrastructure and see the Karpenter and KEDA I deployed working together and deploying nodes as I expected. Even if of course on the first try it didn't work as expected.
+Coming from a GCP background, it was refreshing to get back to AWS after a few years away from it. It was also a great challenge to implement an Event-Driven Architecture for the first time, especially on EKS.
+I think the subject reflects your business needs well, and that's what motivated me to build and thoroughly test this infrastructure, which turned out to be a lot of fun. What I enjoyed most was load testing the setup and watching Karpenter and KEDA work together, scaling nodes as expected, even though the first attempt didn't go as planned.
 
-It was interesting to work around the issue of instantly scaling when there was unexpected load spikes. It was the perfect opportunity to get hands-on experience with Karpenter. That's also why I wanted to implement it myself instead of using the managed Karpenter available in EKS auto-mode. It was also interesting to discover new capabilities as I was working through the subject for example I started implementing IRSA but then discovered the option to use pod-identity instead as an AWS native solution.
+Figuring out how to scale instantly during unexpected load spikes was particularly interesting, and it gave me the opportunity to get hands-on with Karpenter. That's actually why I chose to implement it myself rather than rely on the managed Karpenter available through EKS Auto Mode. Along the way, I also discovered new capabilities I hadn't planned on: for example, I started implementing IRSA before finding that Pod Identity was now the native AWS  approach.
 
-I finish this assignment with new skills in my backpack and I'm proud that I managed to make all the tools I used to provision the infrastructure work together to answer the business need of autoscaling, availability and resiliency.
+I come out of this assignment with new hands-on skills and I'm proud to have gotten all the tools I used to work together to meet the business needs of autoscaling, availability, and resiliency.
 
-Of course this is a POC for the assignment and many more subjects have to be tackled in order to deploy such an infrastructure in production. Some of my ideas for the 2nd version can be found in the section [List of improvement for production ready Workload](#list-of-improvement-for-production-ready-workload). I'd be glad to discuss the implementation with and receive your feedback as well.
+Of course, this remains a POC, and several topics would still need to be addressed to bring this architecture to production. Some of my ideas for a second version are listed in the [List of improvement for prod ready Workload](#list-of-improvement-for-prod-ready-workload) section. I'd be glad to walk you through the implementation and hear your feedback.
 
-If that's the kind of challenges you are facing day to day in your team I think I would thrive in working with you.
-Thank you for the time you'll spend reviewing my work for this assignment.
+If these are the kind of challenge your team faces day to day, I'd genuinely love the opportunity to work with you. Thank you for taking the time to review my work.
 
 Sincerely,
 Maxence CARLIN
